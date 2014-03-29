@@ -37,14 +37,14 @@ class TestDailyPopulationModel:
         starting_population = self.dpc.starting_population()
         convert_hash_values_to_integers(starting_population, EXCLUDE_SET)
         assert starting_population == expected
-
-    def test_storing_population_change(self):
-        starting_population_counts = self._store_starting_population()
-        starting_day_inmates = inmate_population()
-        population_change_counts = change_counts(starting_day_inmates)
-        with self.dpc.writer() as f:
-            f.store(population_change_counts)
-        populate_change = self.dpc.query()[0]
-        convert_hash_values_to_integers(populate_change, EXCLUDE_SET)
-        expected = UpdatePopulationCounts(starting_population_counts, population_change_counts).dpc_format()
-        assert populate_change == expected
+    #
+    # def test_storing_population_change(self):
+    #     starting_population_counts = self._store_starting_population()
+    #     starting_day_inmates = inmate_population()
+    #     population_change_counts = change_counts(starting_day_inmates)
+    #     with self.dpc.writer() as f:
+    #         f.store(population_change_counts)
+    #     populate_change = self.dpc.query()[0]
+    #     convert_hash_values_to_integers(populate_change, EXCLUDE_SET)
+    #     expected = UpdatePopulationCounts(starting_population_counts, population_change_counts).dpc_format()
+    #     assert populate_change == expected

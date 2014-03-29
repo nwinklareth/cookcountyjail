@@ -8,6 +8,9 @@ from copy import copy
 from scripts.helpers import RACE_MAP
 import string
 
+
+UNKNOWN_ID = 'UN'
+
 #
 # The following distribution are based on analysis of inmates collected from
 # Cook County Jail from January 1st, 013 to November 1st, 2013
@@ -24,7 +27,7 @@ FEMALE_DISTRIBUTION = [
     [711, 715, 'LB'],
     [716, 745, 'LT'],
     [746, 806, 'LW'],
-    [807, 807, 'UN'],
+    [807, 807, UNKNOWN_ID],
     [808, 809, 'W'],
     [810, 1000, 'WH']
 ]
@@ -38,7 +41,7 @@ MALE_DISTRIBUTION = [
     [716, 718, 'LB'],
     [719, 819, 'LT'],
     [820, 885, 'LW'],
-    [886, 886, 'UN'],
+    [886, 886, UNKNOWN_ID],
     [887, 888, 'W'],
     [889, 1000, 'WH']
 ]
@@ -49,6 +52,7 @@ BOOKING_DATE = 'booking_date'
 DATE = 'date'
 DISCHARGE_DATE_EARLIEST = 'discharge_date_earliest'
 GENDER = 'gender'
+IN_JAIL = 'in_jail'
 LEFT = 'left'
 POPULATION = 'population'
 RACE = 'race'
@@ -64,7 +68,7 @@ STARTING_DATE = '2013-07-22'
 NEXT_DAY = '2013-07-23'
 NAME_FORMATTER = '%s_%s'
 
-RACE_COUNTS = {'AS': 0, 'BK': 0, 'IN': 0, 'LT': 0, 'UN': 0, 'WH': 0}
+RACE_COUNTS = {'AS': 0, 'BK': 0, 'IN': 0, 'LT': 0, UNKNOWN_ID: 0, 'WH': 0}
 
 JAIL_ID = 'jail_id'
 
@@ -92,12 +96,10 @@ def change_counts(inmates):
     starting_datetime = STARTING_DATE + 'T00:00:00'
     counts = initialize_change_counts()
     for inmate in inmates:
-        if inmate[BOOKING_DATE] == starting_datetime:
-            action = BOOKED
-        else:
-            action = LEFT
+        action = BOOKED if inmate[BOOKING_DATE] == starting_datetime else LEFT
         race = inmate[RACE]
-        race = RACE_MAP[race] if race in RACE_MAP else 'UN'
+        race = RACE_MAP[race] if race in RACE_MAP else UNKNOWN_ID
+        # noinspection PyTypeChecker
         counts[inmate[GENDER]][action][race] += 1
     return counts
 
@@ -108,11 +110,19 @@ def convert_hash_values_to_integers(hash_to_convert, excluding):
             hash_to_convert[key] = int(value)
 
 
+def count_gender_in_jail(gender, race, inmates):
+    count = 0
+    for inmate in inmates:
+        if inmate[IN_JAIL] and inmate[GENDER] == gender and inmate[RACE] == race:
+            count += 1
+    return count
+
+
 def count_gender_race(gender, race, inmates):
     count = 0
     for inmate in inmates:
         if inmate[GENDER] == gender and inmate[RACE] == race:
-            count +=1
+            count += 1
     return count
 
 
@@ -121,27 +131,42 @@ def count_population(inmates, population_date=None, calculate_totals=True):
     if population_date:
         counts[DATE] = population_date
     for gender in GENDERS:
-        counts[gender] = copy(RACE_COUNTS)
+        counts[gender] = {POPULATION: copy(RACE_COUNTS), IN_JAIL: copy(RACE_COUNTS)}
     for gender in GENDERS:
-        counts[gender]['AS'] = count_gender_race(gender, 'A', inmates) +\
-                               count_gender_race(gender, 'AS', inmates)
-        counts[gender]['BK'] = count_gender_race(gender, 'B', inmates) +\
-                               count_gender_race(gender, 'BK', inmates)
-        counts[gender]['IN'] = count_gender_race(gender, 'IN', inmates)
-        counts[gender]['LT'] = count_gender_race(gender, 'LB', inmates) +\
-                               count_gender_race(gender, 'LT', inmates) +\
-                               count_gender_race(gender, 'LW', inmates)
-        counts[gender]['UN'] = count_gender_race(gender, 'UN', inmates)
-        counts[gender]['WH'] = count_gender_race(gender, 'W', inmates) +\
-                               count_gender_race(gender, 'WH', inmates)
+        g_p = counts[gender][POPULATION]
+        g_p['AS'] = count_gender_race(gender, 'A', inmates) + count_gender_race(gender, 'AS', inmates)
+        g_p['BK'] = count_gender_race(gender, 'B', inmates) + count_gender_race(gender, 'BK', inmates)
+        g_p['IN'] = count_gender_race(gender, 'IN', inmates)
+        g_p['LT'] = count_gender_race(gender, 'LB', inmates) + count_gender_race(gender, 'LT', inmates) + \
+            count_gender_race(gender, 'LW', inmates)
+        g_p[UNKNOWN_ID] = count_gender_race(gender, UNKNOWN_ID, inmates)
+        g_p['WH'] = count_gender_race(gender, 'W', inmates) + count_gender_race(gender, 'WH', inmates)
+    for gender in GENDERS:
+        g_ij = counts[gender][IN_JAIL]
+        g_ij['AS'] = count_gender_in_jail(gender, 'A', inmates) + count_gender_in_jail(gender, 'AS', inmates)
+        g_ij['BK'] = count_gender_in_jail(gender, 'B', inmates) + count_gender_in_jail(gender, 'BK', inmates)
+        g_ij['IN'] = count_gender_in_jail(gender, 'IN', inmates)
+        g_ij['LT'] = count_gender_in_jail(gender, 'LB', inmates) + count_gender_in_jail(gender, 'LT', inmates) + \
+            count_gender_in_jail(gender, 'LW', inmates)
+        g_ij[UNKNOWN_ID] = count_gender_in_jail(gender, UNKNOWN_ID, inmates)
+        g_ij['WH'] = count_gender_in_jail(gender, 'W', inmates) + count_gender_in_jail(gender, 'WH', inmates)
     if calculate_totals:
         for gender in GENDERS:
             total = 0
-            for count in counts[gender].itervalues():
+            for count in counts[gender][POPULATION].itervalues():
                 total += count
             field_name = population_field_name(gender)
             counts[field_name] = total
         counts[POPULATION] = counts[population_field_name('F')] + counts[population_field_name('M')]
+        for gender in GENDERS:
+            counts[in_jail_field_name(gender)] = 0
+        for inmate in inmates:
+            if inmate[IN_JAIL]:
+                gender = inmate[GENDER]
+                field_name = in_jail_field_name(gender)
+                counts[field_name] += 1
+                counts[gender][IN_JAIL][RACE_IDS_MAP[inmate[RACE]]] += 1
+        counts[IN_JAIL] = counts[in_jail_field_name('F')] + counts[in_jail_field_name('M')]
     return counts
 
 
@@ -149,7 +174,7 @@ def discharged_null_inmate_records(number_to_make):
     starting_datetime = STARTING_DATE + 'T00:00:00'
     how_many_to_make = {'F': number_to_make / 2, 'M': number_to_make}
     return add_jail_id([{GENDER: gender, RACE: pick_race(gender), BOOKING_DATE: starting_datetime,
-                         DISCHARGE_DATE_EARLIEST: None}
+                         DISCHARGE_DATE_EARLIEST: None, IN_JAIL: random_in_jail()}
                         for gender, count in how_many_to_make.iteritems() for i in range(0, count)])
 
 
@@ -157,7 +182,7 @@ def discharged_on_or_after_start_date_inmate_records(number_to_make, discharged_
     how_many_to_make = {'F': number_to_make / 2, 'M': number_to_make}
     discharge_date = RandomDates(discharged_date)
     return add_jail_id([{GENDER: gender, RACE: pick_race(gender), BOOKING_DATE: DAY_BEFORE,
-                         DISCHARGE_DATE_EARLIEST: discharge_date.next()}
+                         DISCHARGE_DATE_EARLIEST: discharge_date.next(), IN_JAIL: random_in_jail()}
                         for gender, count in how_many_to_make.iteritems() for i in range(0, count)])
 
 
@@ -200,10 +225,14 @@ def inmate_population():
         discharged_on_or_after_start_date_inmate_records(randint(low, high))
 
 
+def in_jail_field_name(gender):
+    return 'females_in_jail' if gender == 'F' else 'males_in_jail'
+
+
 def map_race_id(source_race_id):
     if source_race_id in RACE_IDS_MAP:
         return RACE_IDS_MAP[source_race_id]
-    return 'UN'
+    return UNKNOWN_ID
 
 
 def pick_race(gender):
@@ -216,6 +245,10 @@ def pick_race(gender):
 
 def population_field_name(gender):
     return 'females_population' if gender == 'F' else 'males_population'
+
+
+def random_in_jail():
+    return choice([True, False, True, True, True, True, True, True, False, True])
 
 
 def random_string(str_length=10):
